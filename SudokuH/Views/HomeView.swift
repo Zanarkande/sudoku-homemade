@@ -19,7 +19,7 @@ struct HomeView: View {
                     TimelineView(.everyMinute) { context in
                         header(at: context.date)
                     }
-                    totals
+                    HomeTotals()
                     // Side by side on iPad, stacked on iPhone.
                     let layout = sizeClass == .regular
                         ? AnyLayout(HStackLayout(alignment: .top, spacing: 18))
@@ -97,50 +97,6 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Totals
-
-    private var totals: some View {
-        HStack(spacing: 14) {
-            totalTile(
-                value: "\(session.statistics.totalPlayed)",
-                label: "Games played",
-                systemImage: "square.grid.3x3.fill",
-                color: theme.accent
-            )
-            totalTile(
-                value: TimeFormat.hoursAndMinutes(session.totalPlayTime),
-                label: "Time playing",
-                systemImage: "hourglass",
-                color: theme.fresh
-            )
-        }
-    }
-
-    private func totalTile(value: String, label: String, systemImage: String, color: Color) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.title3)
-                .foregroundStyle(color)
-                .frame(width: 42, height: 42)
-                .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            VStack(alignment: .leading, spacing: 0) {
-                Text(value)
-                    .font(.system(.title2, design: .rounded, weight: .bold))
-                    .foregroundStyle(theme.ink)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(theme.inkSoft)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-        }
-        .card(padding: 14)
-        .accessibilityElement(children: .combine)
-    }
-
     // MARK: - Continue
 
     private func continueCard(_ game: GameState) -> some View {
@@ -161,7 +117,7 @@ struct HomeView: View {
                                 .font(.system(.title, design: .serif, weight: .bold))
                             if game.isHardcore { HardcoreBadge(compact: true) }
                         }
-                        Text("\(TimeFormat.string(session.elapsed(in: .regular))) · \(Int(game.progress * 100))% filled")
+                        ContinueStatus(progress: game.progress)
                             .font(.subheadline)
                             .monospacedDigit()
                             .opacity(0.9)
@@ -208,7 +164,7 @@ struct HomeView: View {
                     Text("Daily Puzzle")
                         .font(.system(.title3, design: .serif, weight: .bold))
                         .foregroundStyle(theme.ink)
-                    Text(dailyStatus)
+                    DailyStatus()
                         .font(.subheadline)
                         .foregroundStyle(solved ? theme.fresh : theme.inkSoft)
                         .monospacedDigit()
@@ -234,16 +190,6 @@ struct HomeView: View {
         }
         .buttonStyle(PressableCardStyle())
         .disabled(session.isGenerating)
-    }
-
-    private var dailyStatus: String {
-        if session.isDailySolved {
-            return "Solved today — see you tomorrow"
-        }
-        if let game = session.dailyGame, game.hasStarted {
-            return "In progress · \(TimeFormat.string(session.elapsed(in: .daily)))"
-        }
-        return "Today's puzzle is waiting"
     }
 
     private func openDaily() {
@@ -323,6 +269,86 @@ struct HomeView: View {
             await session.newGame(difficulty, hardcore: hardcore)
             showGame = true
         }
+    }
+}
+
+// The views below read the running clock, which changes several times a second while a game
+// is on screen. They are separate views so that only they redraw: if `HomeView` itself
+// depended on the clock, its navigation stack would be rebuilt on every tick, which closes
+// any menu open in the game screen's toolbar.
+
+private struct HomeTotals: View {
+    @Environment(GameSession.self) private var session
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 14) {
+            totalTile(
+                value: "\(session.statistics.totalPlayed)",
+                label: "Games played",
+                systemImage: "square.grid.3x3.fill",
+                color: theme.accent
+            )
+            totalTile(
+                value: TimeFormat.hoursAndMinutes(session.totalPlayTime),
+                label: "Time playing",
+                systemImage: "hourglass",
+                color: theme.fresh
+            )
+        }
+    }
+
+    private func totalTile(value: String, label: String, systemImage: String, color: Color) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.title3)
+                .foregroundStyle(color)
+                .frame(width: 42, height: 42)
+                .background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            VStack(alignment: .leading, spacing: 0) {
+                Text(value)
+                    .font(.system(.title2, design: .rounded, weight: .bold))
+                    .foregroundStyle(theme.ink)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(theme.inkSoft)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .card(padding: 14)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// "12:34 · 40% filled" on the Continue card.
+private struct ContinueStatus: View {
+    @Environment(GameSession.self) private var session
+    let progress: Double
+
+    var body: some View {
+        Text("\(TimeFormat.string(session.elapsed(in: .regular))) · \(Int(progress * 100))% filled")
+    }
+}
+
+private struct DailyStatus: View {
+    @Environment(GameSession.self) private var session
+
+    var body: some View {
+        Text(status)
+    }
+
+    private var status: String {
+        if session.isDailySolved {
+            return "Solved today — see you tomorrow"
+        }
+        if let game = session.dailyGame, game.hasStarted {
+            return "In progress · \(TimeFormat.string(session.elapsed(in: .daily)))"
+        }
+        return "Today's puzzle is waiting"
     }
 }
 
