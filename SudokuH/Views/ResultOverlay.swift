@@ -8,6 +8,8 @@ struct ResultOverlay: View {
     let game: GameState
     /// Hides the card so the final board can be looked at.
     let onReviewBoard: () -> Void
+    /// Starts a new game; the game screen asks first if it would replace a game in progress.
+    let onNewGame: (Difficulty) -> Void
 
     private var won: Bool { game.status == .won }
 
@@ -50,7 +52,7 @@ struct ResultOverlay: View {
                     }
 
                     Button {
-                        newGame(game.difficulty)
+                        onNewGame(game.difficulty)
                     } label: {
                         if session.isGenerating {
                             ProgressView()
@@ -67,7 +69,7 @@ struct ResultOverlay: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Menu("Difficulty") {
                             ForEach(Difficulty.allCases) { difficulty in
-                                Button(difficulty.title) { newGame(difficulty) }
+                                Button(difficulty.title) { onNewGame(difficulty) }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -125,9 +127,5 @@ struct ResultOverlay: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
-    }
-
-    private func newGame(_ difficulty: Difficulty) {
-        Task { await session.newGame(difficulty, hardcore: session.hardcoreForNextGame) }
     }
 }

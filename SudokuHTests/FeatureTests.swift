@@ -497,4 +497,63 @@ private let emptyCandidates = [UInt16](repeating: 0, count: 81)
         #expect(session.statistics[.daily].won == 1)
         #expect(session.statistics.totalPlayed == 1)
     }
+
+    @Test func aWonGameCannotBeReplayedForASecondWin() async {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let session = GameSession(store: store)
+        #expect(await session.openDaily())
+        let game = session.game!
+        for index in 0..<81 where !game.isGiven(index) {
+            session.select(index)
+            session.enter(game.puzzle.solution[index])
+        }
+        #expect(session.game?.status == .won)
+        #expect(!session.canRestart)
+
+        session.restart()
+        #expect(session.game?.status == .won)
+        #expect(session.statistics[.daily].played == 1)
+        #expect(session.statistics[.daily].won == 1)
+    }
+
+    @Test func aLostGameCanStillBeTriedAgain() async {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let session = GameSession(store: store)
+        await session.newGame(.easy, hardcore: true)
+        let game = session.game!
+        let empty = (0..<81).filter { !game.isGiven($0) }
+        for index in empty {
+            session.select(index)
+            let digit = game.puzzle.solution[index]
+            // One wrong digit, so the full board is a loss.
+            session.enter(index == empty[0] ? digit % 9 + 1 : digit)
+        }
+        #expect(session.game?.status == .lost)
+        #expect(session.canRestart)
+
+        session.restart()
+        #expect(session.game?.status == .playing)
+        #expect(session.game?.values == game.puzzle.givens)
+    }
+
+    @Test func newGameFromTheDailyPuzzleWarnsOnlyWhenItReplacesAStartedGame() async {
+        let store = temporaryStore()
+        defer { try? FileManager.default.removeItem(at: store.directory) }
+        let session = GameSession(store: store)
+
+        // An untouched regular game can be replaced without asking.
+        await session.newGame(.easy)
+        #expect(await session.openDaily())
+        #expect(!session.newGameReplacesParkedGame)
+
+        // Once it has been played, starting a game from the daily puzzle would throw it away.
+        session.resumeRegular()
+        session.select(session.game!.values.firstIndex(of: 0)!)
+        session.enter(session.game!.puzzle.solution[session.selected!])
+        #expect(!session.newGameReplacesParkedGame) // it's on the board: replacing it is no surprise
+        #expect(await session.openDaily())
+        #expect(session.newGameReplacesParkedGame)
+    }
 }

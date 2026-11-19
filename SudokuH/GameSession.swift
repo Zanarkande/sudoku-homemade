@@ -93,6 +93,13 @@ final class GameSession {
         }
     }
 
+    /// True when starting a new game from the game screen would throw away the regular game
+    /// in progress without the player seeing it: the daily puzzle is on the board and the
+    /// parked regular game has been started. The views ask for confirmation first.
+    var newGameReplacesParkedGame: Bool {
+        activeSlot == .daily && canContinue && games[.regular]?.hasStarted == true
+    }
+
     /// Whether a game started from the game screen should be hardcore:
     /// the same as the game being played, or the setting's default after a daily puzzle.
     var hardcoreForNextGame: Bool {
@@ -136,8 +143,12 @@ final class GameSession {
         return true
     }
 
+    /// Starts the game on the board over. A won game can't be replayed: solving it again
+    /// would count a second win (and, for the daily puzzle, a best time on a known grid).
+    var canRestart: Bool { game.map { $0.status != .won } ?? false }
+
     func restart() {
-        guard var restarted = game else { return }
+        guard canRestart, var restarted = game else { return }
         restarted.restart()
         start(restarted, in: activeSlot)
     }

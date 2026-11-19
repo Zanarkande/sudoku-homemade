@@ -10,6 +10,8 @@ struct GameView: View {
     @AppStorage(SettingsKey.largeDigits) private var largeDigits = false
     @State private var showSettings = false
     @State private var confirmRestart = false
+    /// A new game waiting for the player to confirm that it may replace the parked regular game.
+    @State private var pendingNewGame: Difficulty?
     /// After a game ends, lets the player look at the final board instead of the result card.
     @State private var reviewingBoard = false
 
@@ -35,8 +37,20 @@ struct GameView: View {
         } message: {
             Text("Your progress on this puzzle will be cleared.")
         }
+        .confirmationDialog(
+            "Start a new game?",
+            isPresented: Binding(get: { pendingNewGame != nil }, set: { if !$0 { pendingNewGame = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingNewGame
+        ) { difficulty in
+            Button("Start New Game") { startNewGame(difficulty) }
+        } message: { _ in
+            Text("It will replace the game you have in progress.")
+        }
         .onAppear { session.setBoardVisible(true) }
         .onDisappear { session.setBoardVisible(false) }
+        // The Settings sheet covers the board without making it disappear, so stop the clock by hand.
+        .onChange(of: showSettings) { session.setBoardVisible(!showSettings) }
         .sensoryFeedback(trigger: session.inputFeedback) { _, _ in
             haptics ? .impact(weight: .light) : nil
         }
@@ -49,6 +63,19 @@ struct GameView: View {
         .onChange(of: session.inputFeedback) { play(.tap) }
         .onChange(of: session.errorFeedback) { play(.error) }
         .onChange(of: session.successFeedback) { play(.success) }
+    }
+
+    /// Starts a new regular game, first asking if it would replace one the player can't see.
+    private func requestNewGame(_ difficulty: Difficulty) {
+        if session.newGameReplacesParkedGame {
+            pendingNewGame = difficulty
+        } else {
+            startNewGame(difficulty)
+        }
+    }
+
+    private func startNewGame(_ difficulty: Difficulty) {
+        Task { await session.newGame(difficulty, hardcore: session.hardcoreForNextGame) }
     }
 
     private func play(_ sound: SoundPlayer.Sound) {
@@ -108,7 +135,7 @@ struct GameView: View {
                 if reviewingBoard {
                     backToResultButton
                 } else {
-                    ResultOverlay(game: game) { reviewingBoard = true }
+                    ResultOverlay(game: game, onReviewBoard: { reviewingBoard = true }, onNewGame: requestNewGame)
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 }
             }
@@ -202,12 +229,11 @@ struct GameView: View {
         Menu {
             Menu("New Game", systemImage: "plus") {
                 ForEach(Difficulty.allCases) { difficulty in
-                    Button(difficulty.title) {
-                        Task { await session.newGame(difficulty, hardcore: session.hardcoreForNextGame) }
-                    }
+                    Button(difficulty.title) { requestNewGame(difficulty) }
                 }
             }
             Button("Restart Puzzle", systemImage: "arrow.counterclockwise") { confirmRestart = true }
+                .disabled(!session.canRestart)
             Button("Settings", systemImage: "gearshape") { showSettings = true }
         } label: {
             Label("Options", systemImage: "ellipsis.circle")
