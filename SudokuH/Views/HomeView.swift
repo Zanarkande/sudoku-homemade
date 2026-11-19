@@ -14,28 +14,18 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    TimelineView(.everyMinute) { context in
-                        header(at: context.date)
-                    }
-                    HomeTotals()
-                    // Side by side on iPad, stacked on iPhone.
-                    let layout = sizeClass == .regular
-                        ? AnyLayout(HStackLayout(alignment: .top, spacing: 18))
-                        : AnyLayout(VStackLayout(spacing: 18))
-                    layout {
-                        if session.canContinue, let game = session.regularGame {
-                            continueCard(game)
-                        }
-                        dailyCard
-                    }
-                    newGameCard
+            // A plain page when it fits, a scroll view only when it doesn't
+            // (small phones, large text). A ScrollView alone always rubber-bands,
+            // and `.scrollBounceBehavior(.basedOnSize)` doesn't stop it here.
+            // The bottom padding is only for scrolling past the last card; the
+            // plain page leaves it out so it isn't what tips it into scrolling.
+            ViewThatFits(in: .vertical) {
+                content
+                    .frame(maxHeight: .infinity, alignment: .top)
+                ScrollView {
+                    content
+                        .padding(.bottom, 32)
                 }
-                .frame(maxWidth: sizeClass == .regular ? 760 : 560)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 32)
             }
             .background(ThemeBackground())
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -60,6 +50,29 @@ struct HomeView: View {
             .onAppear { hardcore = hardcoreDefault }
             .onChange(of: hardcoreDefault) { hardcore = hardcoreDefault }
         }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            TimelineView(.everyMinute) { context in
+                header(at: context.date)
+            }
+            HomeTotals()
+            // Side by side on iPad, stacked on iPhone.
+            let layout = sizeClass == .regular
+                ? AnyLayout(HStackLayout(alignment: .top, spacing: 18))
+                : AnyLayout(VStackLayout(spacing: 18))
+            layout {
+                if session.canContinue, let game = session.regularGame {
+                    continueCard(game)
+                }
+                dailyCard
+            }
+            newGameCard
+        }
+        .frame(maxWidth: sizeClass == .regular ? 760 : 560)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 20)
     }
 
     // MARK: - Header
