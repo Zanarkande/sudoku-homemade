@@ -43,7 +43,8 @@ Three layers, with a strict direction: views → `GameSession` → model.
 **Model (`SudokuH/Model/`)** — pure value types, no SwiftUI, no side effects except `GameStore`.
 - `GameState` holds one game and *all the rules*: placing digits, notes, undo, mistakes, win/loss. Its mutating methods return a `MoveOutcome` (`ignored`, `changed`, `mistake`, `won`, `lost`) that the session turns into feedback and statistics. Its `init(from:)` decodes every later-added field with `decodeIfPresent`, so saves from older versions keep loading — follow that pattern when adding stored fields (same for `Statistics`).
 - A board is a flat array of 81 `Int`s (0 = empty), indexed `row * 9 + column`. Notes are a `UInt16` bitmask per cell. `BoardGeometry` has the row/column/box units and peers.
-- `SudokuGenerator` builds a solved grid and digs cells out while the puzzle stays unique (and, for Easy/Medium, solvable with singles only — see `Difficulty`). It is time-budgeted for regular games; `DailyPuzzle` instead uses a seeded RNG and a fixed attempt count so every device gets the same puzzle for the same day.
+- `SudokuSolver` is the bitmask backtracking solver (`solve`, `countSolutions`) that the generator uses for uniqueness checks.
+- `SudokuGenerator` builds a solved grid and digs cells out while the puzzle stays unique (and, for Easy/Medium, solvable with singles only — see `Difficulty`). It is time-budgeted for regular games; `DailyPuzzle` instead uses a seeded RNG and a fixed attempt count so every device gets the same puzzle for the same day. Days are identified by `DayKey` (`DailyCalendar.swift`), an `Int` like `20261114`.
 - `HintEngine` finds the easiest applicable technique and produces a `Hint` with an explanation and the cells to highlight.
 - `Statistics` groups results by `StatCategory` (daily, hardcore, or the difficulty) and supports text export/import.
 - `GameStore` persists games and statistics as JSON in Application Support. Tests pass a store pointing at a temporary directory.
@@ -53,11 +54,15 @@ Three layers, with a strict direction: views → `GameSession` → model.
 - The clock. `elapsed` ticks every 250 ms, but only while the scene is active, the board is visible, and the game is unpaused and in progress (`updateClock`).
 - Statistics updates, auto-saving, the active hint, and counters (`inputFeedback`, `cellPulses`, …) that views watch to trigger haptics, sounds and animations.
 
-**Views (`SudokuH/Views/`)** — `HomeView` owns the `NavigationStack` and pushes `GameView`. Views read the session and call its methods; they contain no game rules.
+**Views (`SudokuH/Views/`)** — `HomeView` owns the `NavigationStack` and pushes `GameView`. Views read the session and call its methods; they contain no game rules. `SoundPlayer` (`SudokuH/SoundPlayer.swift`) synthesises the optional tap sounds in code, so there are no audio files.
 
 ### Things that are easy to get wrong
 
 - **Do not read `session.elapsed` (or anything derived from it, like `totalPlayTime` or `elapsed(in:)`) in the body of a large view.** It changes four times a second. Put the read in a small dedicated child view, as `ClockLabel` (GameView) and `HomeTotals` / `ContinueStatus` / `DailyStatus` (HomeView) do. When `HomeView` itself depended on the clock, its navigation stack was rebuilt every tick, which closed menus open in the game screen's toolbar.
+- **The clock only knows whether the board is visible through `session.setBoardVisible`.** `GameView` calls it on appear and disappear, but a sheet covers the board without making it disappear, so a sheet shown over the game screen has to call it as well (as the Settings sheet does with `onChange(of: showSettings)`).
+- **Starting a new game from the game screen goes through `GameView.requestNewGame`**, not `session.newGame` directly. When the daily puzzle is on the board and a started regular game is parked (`session.newGameReplacesParkedGame`), it asks before replacing that game. `ResultOverlay` gets it as `onNewGame`.
+- **A won game can't be restarted** (`session.canRestart`). Playing it again would count a second win, and a daily best time on a grid the player already knows. Lost games can be restarted.
+- **The Home screen uses `ViewThatFits`**: a plain page when the content fits and a `ScrollView` only when it doesn't, because a `ScrollView` always rubber-bands, even with `.scrollBounceBehavior(.basedOnSize)`. Keep it in mind when adding cards. The iPhone 15 with a Continue card is close to the limit.
 - **Theming.** Colours come from `@Environment(\.theme)` (`Theme.swift`), not from the asset catalog. `.themed()` must be applied at the app root *and on every sheet*, since sheets don't inherit it. Reusable pieces live in `Theme.swift`: `.card()`, `CozyButtonStyle`, `ThemeBackground`, `HardcoreBadge`, `TimeFormat`.
 - **Settings** are plain `UserDefaults` values read with `@AppStorage`; the keys are in `SettingsKey` (top of `GameSession.swift`).
 - **Hardcore mode** hides every assist (highlights, mistake marks, remaining counts, completion animations, hints) until the game ends. New in-game feedback must respect `game.isHardcore`.
