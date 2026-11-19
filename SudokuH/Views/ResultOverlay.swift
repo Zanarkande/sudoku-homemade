@@ -60,16 +60,19 @@ struct ResultOverlay: View {
                     }
                     .buttonStyle(CozyButtonStyle(prominent: won))
 
-                    HStack {
+                    // Equal-width thirds, so "Difficulty" sits exactly under the
+                    // centre of the buttons above whatever the side labels' widths.
+                    HStack(spacing: 0) {
                         Button("View Board", action: onReviewBoard)
-                        Spacer()
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         Menu("Difficulty") {
                             ForEach(Difficulty.allCases) { difficulty in
                                 Button(difficulty.title) { newGame(difficulty) }
                             }
                         }
-                        Spacer()
+                        .frame(maxWidth: .infinity, alignment: .center)
                         Button("Home") { dismiss() }
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .font(.subheadline.weight(.medium))
                     .padding(.top, 4)
